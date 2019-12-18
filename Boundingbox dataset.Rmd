@@ -1,0 +1,84 @@
+---
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.3.0
+  kernelspec:
+    display_name: Python 3
+    language: python
+    name: python3
+---
+
+```{python}
+import pickle
+import cv2
+import numpy as np
+import os
+from glob import glob
+import matplotlib.pyplot as plt
+import imgaug as ia
+from imgaug import augmenters as iaa
+```
+
+```{python}
+
+```
+
+Setting up the different directories
+
+```{python}
+DRIVE_DIR = "Porsche/tantrix-data/"
+UOB_DIR = "/run/media/mah904/"
+HOME_DIR = "/media/markus/"
+BASE_DIR = os.path.join(HOME_DIR,DRIVE_DIR)
+
+GRABCUT_DIR = os.path.join(BASE_DIR, "grabcut/")
+BOUNDINGBOX_DIR = os.path.join(BASE_DIR, "databb1/")
+```
+
+```{python}
+backgrounds_path = os.path.join(BASE_DIR, "backgrounds.pck")
+tiles_pck_fn =  os.path.join(BASE_DIR, "only_tiles.pck")
+
+
+```
+
+```{python}
+if not ('backgrounds' in globals()):
+    with open(backgrounds_path, "rb") as data:
+        backgrounds = pickle.load(data)
+```
+
+```{python}
+
+```
+
+```{python}
+plt.imshow(backgrounds[np.random.randint(len(backgrounds))])
+```
+
+```{python}
+if 0:
+    highest_tileNr = 56
+    nb_of_tile_set = 2
+    tiles = {}
+    for i in range(nb_of_tile_set):
+        for tileNr in range(1,highest_tileNr+1):
+            if tileNr not in tiles:
+                tiles[tileNr] = []
+
+            img=cv2.cvtColor(cv2.imread(GRABCUT_DIR+str(i)+"p"+str(tileNr)+".png" ,cv2.IMREAD_UNCHANGED),cv2.COLOR_BGRA2RGBA)
+            #thinglist = [img, row[1:]]
+            tiles[tileNr].append([img])
+    with open(tiles_pck_fn, 'wb') as data:
+        pickle.dump(tiles, data)
+    del tiles
+```
+
+```{python}
+
+```
