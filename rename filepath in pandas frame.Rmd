@@ -1,0 +1,72 @@
+---
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.3.0
+  kernelspec:
+    display_name: Python 3
+    language: python
+    name: python3
+---
+
+```{python}
+import pandas as pd
+```
+
+```{python}
+filename = "path_and_kpts1.csv"
+```
+
+```{python}
+path_n_stuff = pd.read_csv("./data1/"+filename)
+path_n_stuff.head()
+```
+
+```{python}
+internal_path = "Porsche/tantrix-data/data1/"
+home_pc_path = "/media/markus/" + internal_path
+windows_path = "F:\\tantrix-data\\data1\\"
+uob_pc_path = "/run/media/mah904/" + internal_path
+old_path = uob_pc_path
+new_path = internal_path
+```
+
+```{python}
+path_n_stuff["path_to_img"] = path_n_stuff["path_to_img"].str.replace(pat=old_path, repl=new_path, regex=False)
+path_n_stuff.head()
+```
+
+```{python}
+
+```
+
+```{python}
+path_n_stuff = path_n_stuff.loc[:, ~path_n_stuff.columns.str.contains('^Unnamed')]
+path_n_stuff.head()
+
+```
+
+```{python}
+
+path_n_stuff.head()
+```
+
+```{python}
+path_n_stuff.to_csv("data1/"+filename)
+```
+
+```{python}
+len(path_n_stuff)
+```
+
+```{python}
+path_n_stuff
+```
+
+```{python}
+
+```
