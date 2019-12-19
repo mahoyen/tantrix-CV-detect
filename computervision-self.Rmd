@@ -1,0 +1,287 @@
+---
+jupyter:
+  jupytext:
+    formats: ipynb,Rmd
+    text_representation:
+      extension: .Rmd
+      format_name: rmarkdown
+      format_version: '1.2'
+      jupytext_version: 1.3.0
+  kernelspec:
+    display_name: Python 3
+    language: python
+    name: python3
+---
+
+```{python}
+import pandas as pd
+import torch
+from torchvision import transforms
+from skimage import io, transform
+import numpy as np
+import matplotlib.pyplot as plt
+```
+
+```{python}
+labels_fn =  "data1/path_and_kpts1.csv"
+kpts_frame = pd.read_csv(labels_fn)
+```
+
+```{python}
+img_name = kpts_frame.iloc[:, 1]
+kpts = kpts_frame.iloc[:, 2:]
+
+```
+
+```{python}
+def show_landmarks(image, landmarks):
+    """Show image with landmarks"""
+    new_img = image.permute([1,2,0])
+    plt.imshow(new_img.int())
+    plt.scatter(landmarks[:, 0], landmarks[:, 1], s=10, marker='.', c='r')
+    plt.pause(0.001)  # pause a bit so that plots are updated
+```
+
+```{python}
+class TantrixLandmarksDataset(torch.utils.data.Dataset):
+    
+    def __init__(self, csv_file, transform=None):
+        """
+        Args:
+            csv_file (string): Path to the csv file with annotations.
+            root_dir (string): Directory with all the images.
+            transform (callable, optional): Optional transform to be applied
+                on a sample.
+        """
+        self.landmarks_frame = pd.read_csv(csv_file)
+        self.transform = transform
+        
+    def __len__(self):
+        return len(self.landmarks_frame)
+    
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        img_name = self.landmarks_frame.iloc[idx, 1]
+        image = io.imread(img_name)
+        #print(image.shape)
+        image = image.transpose((2, 0, 1))
+        image = torch.from_numpy(image).float()
+#         #print(image.shape)
+        if self.transform:
+            image = self.transform(image)
+        landmarks = self.landmarks_frame.iloc[idx, 2:]
+        landmarks = np.array([landmarks])
+        landmarks = landmarks.astype('float').reshape(-1, 2)
+        sample = {'image': image, 'landmarks': torch.from_numpy(landmarks)} # torch.from_numpy(image), torch.from_numpy(landmarks)
+
+        
+
+        return sample
+```
+
+```{python}
+#from other file:
+std = 59.27295119572318
+mean = 111.47896697185168 
+
+trans = transforms.Normalize((mean, mean, mean), (std, std, std), inplace=False)
+
+tantrix_DS = TantrixLandmarksDataset(labels_fn, transform = trans)
+```
+
+```{python}
+invTrans = transforms.Compose([ transforms.Normalize(mean = [ 0., 0., 0. ],
+                                                     std = [ 1/std, 1/std, 1/std ]),
+                                transforms.Normalize(mean = [ -mean, -mean, -mean ],
+                                                     std = [ 1., 1., 1. ]),
+                               ])
+```
+
+```{python}
+for i in range(5):
+    print(tantrix_DS.landmarks_frame.iloc[i, 1])
+```
+
+```{python}
+for i in range(len(tantrix_DS)):
+    offset = 0#len(tantrix_DS)-5
+    sample = tantrix_DS[i+len(tantrix_DS)-5]
+    print(np.array(sample['image']).min())
+    print(i+offset, sample['image'].shape, sample['landmarks'].shape)
+
+    ax = plt.subplot(1, 4, i + 1)
+    plt.tight_layout()
+    ax.set_title('Sample #{}'.format(i))
+    ax.axis('off')
+    show_landmarks(**sample)
+    if i == 3:
+        plt.show()
+        break
+```
+
+```{python}
+class ToTensor(object):
+    """Convert ndarrays in sample to Tensors."""
+
+    def __call__(self, sample):
+        image, landmarks = sample['image'], sample['landmarks']
+
+        # swap color axis because
+        # numpy image: H x W x C
+        # torch image: C X H X W
+        image = image.transpose((2, 0, 1))
+        return {'image': torch.from_numpy(image),
+                'landmarks': torch.from_numpy(landmarks)}
+```
+
+```{python}
+dataloader = torch.utils.data.DataLoader(tantrix_DS, batch_size=4,
+                        shuffle=True, num_workers=4)
+```
+
+```{python}
+import torch.nn as nn
+import torch.nn.functional as F
+
+
+class Net(nn.Module):
+    def __init__(self):
+        super(Net, self).__init__()
+        #300x300
+        self.conv1 = nn.Conv2d(3, 32, 5)
+        #300-5+1 = 296
+        self.pool1 = nn.MaxPool2d(2, 2, ceil_mode = True)
+        #296/2 = 135
+        
+        self.conv2 = nn.Conv2d(32, 64, 3)
+        #135-3+1 = 132
+        self.pool2 = nn.MaxPool2d(2, 2, ceil_mode = True)
+        #132/2 = 66
+        
+        self.conv3 = nn.Conv2d(64, 128, 3)
+        #66-3+1 = 64
+        self.pool3 = nn.MaxPool2d(2, 2, ceil_mode = True)
+        #64/2 = 32
+        
+        self.conv4 = nn.Conv2d(128, 512, 3)
+        #32-3+1 = 30
+        self.pool4 = nn.MaxPool2d(2, 2, ceil_mode = True)
+        #30/2 = 15
+        
+        self.fc1 = nn.Linear(512 * 17 ** 2, 120)
+        self.fc2 = nn.Linear(120, 84)
+        self.fc3 = nn.Linear(84, 16)
+
+    def forward(self, x):
+        x = self.pool1(F.leaky_relu(self.conv1(x)))
+        x = self.pool2(F.leaky_relu(self.conv2(x)))
+        x = self.pool3(F.leaky_relu(self.conv3(x)))
+        x = self.pool4(F.leaky_relu(self.conv4(x)))
+        x = x.view(-1, 512 * 17 ** 2)
+        x = F.leaky_relu(self.fc1(x))
+        x = F.leaky_relu(self.fc2(x))
+        x = self.fc3(x)
+        return x
+
+
+net = Net()
+```
+
+```{python}
+net.parameters
+net.cuda()
+```
+
+```{python}
+import torch.optim as optim
+
+criterion = nn.MSELoss()
+optimizer = optim.Adam(net.parameters(), lr=0.0001)
+```
+
+```{python}
+
+PRINT_EVERY = 50
+for epoch in range(10):  # loop over the dataset multiple times
+
+    running_loss = 0.0
+    for i, data in enumerate(dataloader, 0):
+        # get the inputs; data is a list of [inputs, labels]
+        [inputs, labels] = data.values()
+        # zero the parameter gradients
+        optimizer.zero_grad()
+        # forward + backward + optimize
+        outputs = net(inputs.float().cuda())
+        outputs = outputs.view((4, 8, 2))
+        loss = criterion(outputs, labels.type(torch.float).cuda())
+        
+        loss.backward()
+        optimizer.step()
+
+        # print statistics
+        running_loss += loss.item()
+        if i % PRINT_EVERY == 0 and i:    # print every PRINT_EVERY mini-batches
+#             print(loss)
+            print('[%d, %5d] loss: %.3f' %
+                  (epoch + 1, i + 1, running_loss / PRINT_EVERY))
+            running_loss = 0.0
+
+print('Finished Training')
+```
+
+```{python}
+torch.save(net.state_dict(), "adamNetwithLeakyReLU.pth")
+```
+
+```{python}
+anothernet = Net()
+```
+
+```{python}
+anothernet.load_state_dict(torch.load("adamNetwithLeakyReLU.pth"))
+```
+
+```{python}
+anothernet.cuda()
+```
+
+```{python}
+sample = tantrix_DS[np.random.randint(len(tantrix_DS))]
+```
+
+```{python}
+
+```
+
+```{python}
+sample = tantrix_DS[np.random.randint(len(tantrix_DS))]
+input_img = sample["image"].unsqueeze(0) 
+output = anothernet(input_img.cuda())
+output
+```
+
+```{python}
+sample = tantrix_DS[np.random.randint(len(tantrix_DS))]
+input_img = sample["image"].unsqueeze(0) 
+output = anothernet(input_img.cuda())
+ouy=output.detach().cpu()
+inv = invTrans(sample["image"])
+landmarks_output = ouy.view((8, 2))
+show_landmarks(inv, sample["landmarks"])
+show_landmarks(inv, landmarks_output)
+```
+
+```{python}
+
+```
+
+```{python}
+inv = invTrans(sample["image"])
+show_landmarks(inv, landmarks_output)
+```
+
+```{python}
+
+```
